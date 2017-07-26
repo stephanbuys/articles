@@ -2,12 +2,14 @@ Question:
 - statement about custom derive correct?
 - primary key requirement statement below seems flimsy.
 - rust capitilisation? (pick one)
+- am I mixing statements and expressions?
+- am I mising structs and objects?
 
 Outline
 
 ## Introduction/getting started
 
-Diesel (http://diesel.rs) is an ORM (Object-relational mapping) and Query Builder written in Rust. It support Postgresql, Mysql and SQLite. It makes use of Rust's custom derive functionality to generate all the code you need in order to get all the power of Rust's type system. This means that you get compile-time validation of your code, thus eliminating possible runtime errors and giving you lightning fast code.
+Diesel (http://diesel.rs) is an ORM (Object-relational mapping) and Query Builder written in Rust. It supports Postgresql, Mysql and SQLite. It makes use of Rust's custom derive functionality to generate all the code you need in order to get all the power of Rust's type system. This means that you get compile-time validation of your code, thus eliminating possible runtime errors and giving you lightning fast code.
 
 Diesel is very powerful, but just following the examples might still leave you scratching your head, asking questions like "where do these types come from?", "what should I add here", "how does this work?". This article is meant to shed a little bit of light on the topic from the perspective of a intermediate-level rust developer.
 
@@ -127,7 +129,7 @@ First, a 'pro tip' from a not-a-pro, you should install the cargo subcommand `ex
 
     `cargo install cargo-expand`
     
-This allows you to run, the following and actually _see_ what is generated (warning, this guide, assumes that you know rust, but the following might make even seasoned rust developer's eyes cross, feel free to skip it or use as bedtime reading).
+This allows you to run, the following command and actually _see_ what is generated (warning, this guide assumes that you know rust, but the following might make even a seasoned rust developer's eyes water, feel free to skip it or use as bedtime reading).
       
     `cargo exand`
     
@@ -141,51 +143,162 @@ These are your standard rust derives that most developers rely on, you probably 
 
 #### Queryable
 
-...
-To be continued...
+The first thing that most developers usually want to do with their databases is query the data within it, in order to do this you need to decorate your `struct` as follows:
 
+    #[derive(Queryable)]
+    struct User {
+        id: i32,
+        firstname: String,
+        lastname: String,
+        age: i32,
+    }
+    
+This will cause `diesel_codegen` to generate the query DSL needed for `diesel` to be able to execute queries based on your objects. The code above represents one "row" in a database table called `users`, with columns `firstname`, `lastname` and `age`.
 
-Under the hood:
+A primary key column is mandatory to work with `diesel`, but is probably good practice anyway.
 
-- DATABASE_URL
-- diesel print schema
+How to use the DSL to construct queries is addressed later in the article.
 
-Recommended:
-- cargo-expand
+#### Insertable
 
-## Migrations
+Unless you are coming from an existing system, you probably want to insert data into your database too. A typical "insertable" object would look like this:
 
-### Schema
+    #[derive(Insertable)]
+    #[table_name="users"]
+    struct NewUser {
+        firstname: String,
+        lastname: String,
+        age: i32,
+    }
+    
+Note that we have dropped the `id` field as the SQL server will handle this for us, by default (this might change for advanced use-cases).
 
-infer_schema!
-	diesel print-schema
+Also note that we now explicitly name the table, `users`, as there is no direct correlation between the struct name and the table name.
 
-## Structs
+#### Identifiable
 
-- PascalCase to pascal_case(s), or AUserName to a_user_name(s)
-- Types:
-   - diesel::types
-   - timestamps: http://docs.diesel.rs/diesel/pg/types/sql_types/index.html
-   - number: http://docs.diesel.rs/diesel/pg/types/sql_types/index.html
-     There are no unsigned ints
-     
-### Derives
+Inevitably you are going to use SQL joins to construct results from more than one table at a time. In order for the join to successfully resolve the exact object in your target table this table needs to be annotated as follows:
 
-- QueryAble
-- Identifiable
-- Insertable
-  - annotate column names
-  - specify table name
-- AsChangeset
-- Associations     
-  - belongs_to
-    - User -> user_id: i32,
-    - foreign key 
-  - belonging_to
-    -	some examples
+    #[derive(Identifiable)]
+    struct User {
+        id: i32,
+        firstname: String,
+        lastname: String,
+        age: i32,
+    }
+
+By default `diesel` will assume your primary key is called `id`, if it is not you can override it as follows:
+
+    #[derive(Identifiable)]
+    #[primary_key(guid)]
+    struct User {
+        guid: i32,
+        firstname: String,
+        lastname: String,
+        age: i32,
+    }
+    
+#### Associations
+
+The tables that you want to enrich with your "Identifiable" data needs to be annotated as follows:
+
+    #[derive(Associations)]
+    #[belongs_to(User)]
+    struct ActiveUsers {
+        id: i32,
+        user_id: i32,
+        last_active: NaiveDateTime
+    }
+    
+This will allow you to join the `User` data to this table by looking up the user, defined by the field `user_id`, corresponding `id` field in the `User` table. In the event where your foreign key field is not specified in the pattern `type_id`, you will need to manually map it, as in:
+
+    #[derive(Associations)]
+    #[belongs_to(User, foreign_key="user_lookup_key")]
+    struct ActiveUsers {
+        id: i32,
+        user_lookup_key: i32,
+        last_active: NaiveDateTime
+    }
+    
+#### AsChangeset
+
+Full disclosure, I have no idea what this is for :-) Maybe it will be covered in a follow-up guide. To attempt to grok this yourself have a look at `diesel::query_builder::AsChangeset` in the docs.
         
-### Using
+## Using Diesel
 
+At this point, you are ready to actually _do_ something with `diesel`, probably insert some data and make some queries. This is covered by multiple examples in the Getting Started guide. There are, however, some items that need to be unpacked to, hopefully, make the lightbulbs go on.
+
+First and foremost, at this point, it is super important to underscore that you are now entering the normal `_rust_` world. What I mean by this is that the `codegen` and "magic" bits of `diesel` now take a backseat.
+
+This implies that when you look at example code, there is no more slight of hand, trust the complier and take time to unpack the statements and expressions like you would normally do.
+
+You'll find that you are calling normal methods, passing normal data-structures (or references to them) and that you can `println!`, debug, step, re-order and organise like you would any other `rust` app. It took me an unfortunately long time to `grok` this, but it is an important insight and will allow you to code without fear.
+
+### Connecting to the database
+
+The `postgresql` example uses the code the function `pub fn establish_connection() -> PgConnection` to wrap the connection into a convenient function call for re-use in the rest of the example code.
+
+`PgConnection` encapsulates the handle to the `posgresql` for you, keep this object around or recreate it on demand. When needed look at the `r2d2` crate to create a pool of database connections.
+
+Everything you execute using `diesel` will depend on the connection object to be available.
+
+### Inserting data
+
+The guide specifies the following function in `lib.rs`, lets step through it:
+
+    pub fn create_post(conn: &PgConnection, title: &str, body: &str) -> Post {
+        use schema::posts;
+
+        let new_post = NewPost {
+            title: title,
+            body: body,
+        };
+
+        diesel::insert(&new_post).into(posts::table)
+            .get_result(conn)
+            .expect("Error saving new post")
+    }
+
+First note the reference to the connection `&PgConnection`, a new `PgConnection` can aslo be instantiated by calling something like:
+
+    let conn = establish_connection();
+
+This would not be a great idea, as you will be creating a new connection everytime the function is called, but it serves to illustrate that there is nothing magical about a connection, unless you start to DOS your database server with too many connections, then you will of course also discover that there is nothing magical about a server either, but in a different context.
+
+The next line, `use schema::posts;`, stumped me for a long time, as this is using generated code. In the `diesel::insert` statement, we see the use of `posts::table`. At this point is might be a good idea to take the output of `cargo expand` and have a look at it in an IDE of sorts. Try the following:
+
+    # Check out a copy of diesel
+    git clone https://github.com/diesel-rs/diesel.git
+    cd diesel/examples/postgres/getting_started_step_3/
+    
+    # Build the example (assuming your postgres instance is ready 
+    # and running, see the docker hint above)
+    echo DATABASE_URL=postgres://username:password@localhost/diesel_demo > .env
+    diesel setup
+    cargo build
+    
+    # Expand the code code (assuming use installed cargo-expand)
+    cargo expand --lib > expanded.rs
+    
+If you search for `mod schema` under it you will see `mod posts`, and there you'll find a  `table` struct (empty).
+
+Next we have a new object (which is `Insertable`) called `new_post`. 
+
+Lastly we have the actual `diesel` statement `insert`. If you consult the documentation you will see that the `diesel` module has 5 functions, `insert`, `delete`, `insert_default_values`, `select` and `update`.
+
+If you look at the `insert` function you'll see it accepts `records` (in this case our new user, but it can also be a `Vec<T>`) and returns an `IncompleteInsertStatement` object, which has one method called `into()` which accepts your `table` struct. The patterns to remember, in other words, you could have called `into(schema::posts::table)` and avoided the use statement.
+
+In this case `schema` is the name of _your_ module, due to the schema being generated in the `schema.rs` file.
+
+### Querying data
+ 
+ 
+ > To be continued...
+ 
+ 
+ 
+ 
+ 
  - schema::table
 	  - dsl
 		  - columns
