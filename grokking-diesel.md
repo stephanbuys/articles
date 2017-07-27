@@ -3,15 +3,18 @@ Question:
 - primary key requirement statement below seems flimsy.
 - rust capitilisation? (pick one)
 - am I mixing statements and expressions?
-- am I mising structs and objects?
+- am I mising structs and objects
+- can we safely skip joins, etc (complex queries)? this article is already _dense_
 
 Outline
 
 ## Introduction/getting started
 
-Diesel (http://diesel.rs) is an ORM (Object-relational mapping) and Query Builder written in Rust. It supports Postgresql, Mysql and SQLite. It makes use of Rust's custom derive functionality to generate all the code you need in order to get all the power of Rust's type system. This means that you get compile-time validation of your code, thus eliminating possible runtime errors and giving you lightning fast code.
+Diesel (http://diesel.rs) is an ORM (Object-relational mapping) and Query Builder written in Rust. It supports Postgresql, Mysql and SQLite. It makes use of Rust's custom derive functionality to generate all the code you need in order to get all the power of Rust's type system when interacting with a database. This means that you get compile-time validation of your code, thus eliminating possible runtime errors.
 
 Diesel is very powerful, but just following the examples might still leave you scratching your head, asking questions like "where do these types come from?", "what should I add here", "how does this work?". This article is meant to shed a little bit of light on the topic from the perspective of a intermediate-level rust developer.
+
+There are many topics that this article will not cover, but the hope is that you will be able to "grok" enough of `diesel` so that the rest becomes obvious and that you understand how, even new, topics conspire to work together.
 
 ## First steps
 
@@ -31,7 +34,7 @@ At its core diesel consists of 4 main components:
 
 The diesel crate, diesel_codegen (the code generator) and the diesel cli, which by now you should have been introduced to.
 
-The last major component, and 'secret weapon' (according to me) is the the test suite in the official repo (https://github.com/diesel-rs/diesel/tree/master/diesel_tests), it served as my guide whenever I got stuck, although it will be replaced by documentation through the massive effort the project and its contributors are currently undertaking to improve the documentation.
+The last major component, and 'secret weapon' or 'unofficial guide' (according to me) is the the test suite in the official repo (https://github.com/diesel-rs/diesel/tree/master/diesel_tests), it served as my guide whenever I got stuck, although it will be replaced by documentation through the massive effort the project and its contributors are currently undertaking to improve the documentation.
 
 ### Environment
 
@@ -292,63 +295,118 @@ In this case `schema` is the name of _your_ module, due to the schema being gene
 
 ### Querying data
  
- 
- > To be continued...
- 
+ Again, we'll refer to a function in the guide, in this case the `show_posts.rs` file:
  
  
- 
- 
- - schema::table
-	  - dsl
-		  - columns
-      -::table
-      
-How it works
+```
+extern crate diesel_demo;
+extern crate diesel;
 
-table is an empty struct
-select and filter build up "pseudo queries"
-the you call something from the LoadDSL on the query
+use self::diesel_demo::*;
+use self::diesel_demo::models::*;
+use self::diesel::prelude::*;
 
-### Building queries
+fn main() {
+    use diesel_demo::schema::posts::dsl::*;
 
-http://docs.diesel.rs/diesel/prelude/index.html
-	DSLs
-Select statements can have:
-	SelectStatement {
-	    select: 
-	    from: 
-	    distinct: NoDistinctClause,
-	    where_clause: NoWhereClause,
-	    order: NoOrderClause,
-	    limit: NoLimitClause,
-	    offset: NoOffsetClause,
-	    group_by: NoGroupByClause
-	}
-Expressions
-	http://docs.diesel.rs/diesel/expression_methods/global_expression_methods/trait.ExpressionMethods.html#method.desc      
+    let connection = establish_connection();
+    let results = posts.filter(published.eq(true))
+        .limit(5)
+        .load::<Post>(&connection)
+        .expect("Error loading posts");
 
+    println!("Displaying {} posts", results.len());
+    for post in results {
+        println!("{}", post.title);
+        println!("----------\n");
+        println!("{}", post.body);
+    }
+}
+```
+
+Stepping through it from the top, first we import our own crate (the example `Cargo.toml` specifies `crate` name as `diesel_demo`). The we import the `diesel` crate.
+
+`use self::diesel_demo::*;` gives us access to the `establish_connection()` function, `use self::diesel_demo::models::*;` give us access to the actual structs that we defined in our `models.rs` files, in this case the `Post` struct, which is uses in `load` method later in the example.
+
+`use self::diesel::prelude::*;` is a necessary import that bring a whole bunch of `diesel` Traits and types into scope. It is needed for diesel to work and beyond the scope of this article to dive into.
+
+In the `main()` function is where we encounter the use of some magic again, specifically the `use diesel_demo::schema::posts::dsl::*;` line. When I first started using `diesel` I was stumped between the difference of `schema::tablename::*` imports as used above when inserting code and `schema::posts::dsl::*` dsl imports. 
+
+A look at the output of `cargo expand` allows for some clarification, but in short, `schema::posts::dsl::*` brings the `columns` of your table into scope. Each column type that is generated for you has a collection of `expression_methods` implemented on it, in other words, the `dsl` (domain specific language) allows us to use the `columns` in our table's names (as defined by the `schema.rs` generated code) and apply logic to it in order to construct our SQL queries. (see http://docs.diesel.rs/diesel/expression_methods/global_expression_methods/trait.ExpressionMethods.html#method.desc)
+    
+Extra credit if you spotted the convenience import of `table` into the dsl module (I think this is for convenience).
+
+#### Building queries
+
+In SQL we construct a select statement to return values from our database, in `diesel` we use rust's type system to construct type-checked, safe versions of those. This is great for anyone who has ever struggled with the fragility of SQL queries, and its implied security risks.
+
+The next statement `posts.filter(published.eq(true))` reflects that we want to run the `filter` method on the `posts` table (conveniently also imported into our context by the `use` statement). `filter` takes a constucted filter as its input. You construct your filter by combining columns and their expression methods.
+
+To inspect the results of this you can rewrite the relevant code as:
+
+```
+    use diesel::debug_sql;
+    let posts_with_sql = posts.filter(published.eq(true))
+        .limit(5);
+    
+    println!("SelectStatement: {:#?}", posts_with_sql);
+    
+    let results = posts_with_sql
+        .load::<Post>(&connection)
+        .expect("Error loading posts");
+```
+
+Also add `#![feature(use_extern_macros)]` to the top of the file. It you look at the output you will see a `SelectStatement` object is returned, you can also use `    println!("SQL: {}", debug_sql!(posts_with_sql));` to look at the SQL that would be generated.
+
+The main takeaway from this section is that you first build up the relevant SQL statement by using your `table` and `columns` imported from the `dsl` module, this is introspect-able.
+
+You should familiarize yourself as much as possible with the different `expression_methods` you can call on columns and that will get you well on your way to building the SQL queries you want to execute. 
+ 
 ### Getting results
 
-Getting results
-	get_result
-	get_results
-	load
-	first
-		limit(1).get_result
-		
-Mostly returned as the struct in your models.rs, or Vec of struct, or tuples		
+The last item we'll handle in this article is actually reading your results. In the `show_posts.rs` binary this is achieved by the lines:
 
-## The unofficial cheatsheets
+```
+    let results = ...omitted...
+        .load::<Post>(&connection)
+        .expect("Error loading posts");
+```
 
-Check `diesel_tests/tests` in the repo for copious examples.
+As can be seen we are calling the `.load()` method of the `SelectStatement` struct that we inspected a bit closer above. The `.load()` method is generic, so we need to give the compiler some hints as to what type we want to load. The parameter for the load function is a reference to (or borrow of) the `connection` object returned by `establish_connection`.
 
-### Diesel CLI
+`load` returns a result object, which in the case of this demo we deal with by just unwrapping the result with the `expect(&str)` method. We then pass the result if we were successful result in to `results` binding. 
 
-The Diesel CLI deserves special mention, you will use it to create your migrations and execute them. Other subcommands that warrant special mention are:
+See `diesel::prelude::LoadDsl` or `diesel::prelude::FirstDsl` in the docs for some alternatives to `load`. As will be seen the methords return a `QueryResult` which is just a `Result<T, Error>;` type alias.
 
-    diesel database reset
-    
-This will drop your database 
+In all the methods just mentioned we either can a `QueryResult<T>` or `QueryResult<Vec<T>>`, in other words, one row or multiple rows of the selected columns.
+
+#### Wresting with results
+
+If we wanted to get all the results back, we could have used the code:
+
+```
+    let results :Vec<Post> = posts
+        .load(&connection)
+        .expect("Error loading posts");
+```
+
+`load` and `get_results` are equivalent, in other words, they return a `Vec<T>` result (`QueryResult`). The code was also reformatted to illustrate the return-type hint given to the compiler in the binding, `let results :Vec<Post> = ...`. 
+
+Lastly, sometimes you will use a `select` method or `join` method (not illustrated in the article, but do check out the 'unofficial guide' aka `diesel_tests` mentioned above) which will return rows that do not map directly to the fields in your models, you would then use a `tuple` to collect your results from your `load` method. This may look like:
+
+```
+    let results :Vec<(i32, String, String, bool)>= posts
+        .load(&connection)
+        .expect("Error loading posts");
+```
+
+Above we expressed the `Post` model or `struct` as a `tuple` of its constituent parts.
+
+## What we didn't cover and what's next
+
+There is a lot that wasn't covered in this article, even though it is quite a large volume of information to consume in its own right. As mentioned initially, the goal was to explain enough of `diesel` and its structure that it would become possible for interested developers to "grok" or understand it.
+
+I hope you made it this far and that you enjoyed the journey, please send feedback and enjoy `rust` and `diesel`.
+
 
 [1] https://12factor.net
