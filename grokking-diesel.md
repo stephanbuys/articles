@@ -1,12 +1,10 @@
-Question:
+Outstanding Questions:
 - statement about custom derive correct?
 - primary key requirement statement below seems flimsy.
 - rust capitilisation? (pick one)
 - am I mixing statements and expressions?
 - am I mising structs and objects
 - can we safely skip joins, etc (complex queries)? this article is already _dense_
-
-Outline
 
 ## Introduction/getting started
 
@@ -62,7 +60,7 @@ When designing your tables you should plurals of your table names, diesel will t
 
 Diesel will take `PascalCase` rust structs (which probably will describe a single object, or row in your database table) and translate them into `snake_case` table names with a `s` tucked at the end to "pluralise" it. For example `AFancyNamedObject` will be assumed to map to a table named `a_fancy_named_objects`.
 
-3. Infer the Schema for use in Rust
+### Infer the Schema for use in Rust
 
 Diesel has the ability to inspect your actual database and infer a schema for use in rust, this is in turn used to create the necessary DSL (domain specific language) that allows you to interact with your database in safe, lightning fast, strongly typed fashion.
 
