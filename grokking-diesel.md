@@ -1,15 +1,8 @@
-Outstanding Questions:
-- statement about custom derive correct?
-- primary key requirement statement below seems flimsy.
-- Rust capitilisation? (pick one)
-- am I mixing statements and expressions?
-- am I mising structs and objects
-- can we safely skip joins, etc (complex queries)? this article is already _dense_
-
 ## Introduction
 
- Diesel (http://diesel.rs) is an ORM (Object-relational mapper) and Query Builder written in Rust. It supports Postgresql, Mysql and SQLite. It makes use of Rust's custom derive functionality to generate all the code you need in order to get all the power of Rust's type system when interacting with a database. This means that you get compile-time validation of your code, thus eliminating possible runtime errors.
- Diesel is very powerful, but by just following the examples might still leave you scratching your head, asking questions like "where do these types come from?", "what should I add here", "how does this work?". This article is meant to shed a little bit of light on the topic from the perspective of a intermediate-level Rust developer.
+Diesel (http://diesel.rs) is an ORM (Object-relational mapper) and Query Builder written in Rust. It supports Postgresql, Mysql and SQLite. It makes use of Rust's custom derive functionality to generate all the code you need in order to get all the power of Rust's type system when interacting with a database. This means that you get compile-time validation of your code, thus eliminating possible runtime errors.
+
+Diesel is very powerful, but by just following the examples might still leave you scratching your head, asking questions like "where do these types come from?", "what should I add here", "how does this work?". This article is meant to shed a little bit of light on the topic from the perspective of a intermediate-level Rust developer.
 
 There are many topics that this article will not cover, but the hope is that you will be able to "grok" enough of Diesel so that the rest becomes obvious and that you understand how it works, to the extent that new territory that you explore in this crate also becomes simpler to understand.
 
@@ -57,19 +50,15 @@ Follow the pattern in the Getting Started guide, and note that you can add more 
 
 When designing your tables you should put plurals of your table names. As an example, Diesel will take the model `User` and search for the table `users`. You can define custom table names, but knowing the Diesel developers' assumptions will probably spare you some confusion.
 
-Diesel will take `PascalCase` Rust structs (which will probably describe single objects, or rows in your database table) and translate them into `snake_case` table names with an `s` tucked at the end to "pluralise" it. For example, `AFancyNamedObject` will be assumed to map to a table named `a_fancy_named_object`.
+Diesel will take `PascalCase` Rust structs (which will probably describe single objects, or rows in your database table) and translate them into `snake_case` table names with an `s` tucked at the end to "pluralise" it. For example, `AFancyNamedObject` will be assumed to map to a table named `a_fancy_named_objects`.
 
 ### Infer The Schema From The Database
 
-Diesel has the ability to inspect your actual database and infer a
-schema for use in Rust, this will be used to create the necessary DSL
-(domain specific language) that allows you to interact with your
-database in a safe, lightning fast, and strongly typed fashion.
+Diesel has the ability to inspect your actual database and infer a schema for use in Rust, this will be used to create the necessary DSL (domain specific language) that allows you to interact with your database in a safe, lightning fast, and strongly typed fashion. 
 
 The Getting Started guide and examples use the `infer_schema!` macro. The major disadvantage of using this macro is, firstly, that you have _no_ idea how Diesel actually interprets your database's types (this matters for your models, which will be revealed later) and secondly it requires a bootstrapped database instance during compile time, which can be a bit of a pain when compiling as part of a pipeline that might not have your database and compiler toolchain available to each other.
 
-It is recommended that you use of the `diesel print-schema` subcommand
-and simply copy and paste the inferred schema into a file in your project (in the Getting Started guide this is `schema.rs` but it could just as easily be pasted into `lib.rs` or `main.rs`). 
+It is recommended that you use of the `diesel print-schema` subcommand and simply copy and paste the inferred schema into a file in your project (in the Getting Started guide this is `schema.rs` but it could just as easily be pasted into `lib.rs` or `main.rs`). 
 
 What you will see is a `table!` macro similar to:
 
@@ -80,17 +69,11 @@ What you will see is a `table!` macro similar to:
        }
     }
     
-You want to grab the datatypes (`Integer` and `VarChar` in this case)
-and immediately run over to `docs.rs/diesel` and plug it into the doc
-search bar. This will take you straight to `diesel::types::Foo` (also
-explore `diesel::types`) and allows you to inspect the implemented
-`ToSql` and `FromSql` traits for each type. To take one example, `Integer` maps to `i32` in Rust. This is super useful when implementing your models, or wrestling with compile-time errors.
+You want to grab the datatypes (`Integer` and `VarChar` in this case) and immediately run over to `docs.rs/diesel` and plug it into the doc search bar. This will take you straight to `diesel::types::Foo` (also explore `diesel::types`) and allows you to inspect the implemented `ToSql` and `FromSql` traits for each type. To take one example, `Integer` maps to `i32` in Rust. This is super useful when implementing your models, or wrestling with compile-time errors.
   
 ### Create Models
 
-As with the schema, you don't _have_ to put your models in the
-`models.rs` file. It is recommend that you split your models out using
-the Rust modules system, and something like the following might assist, especially when dealing with lots of models.
+As with the schema, you don't _have_ to put your models in the `models.rs` file. It is recommend that you split your models out using the Rust modules system, and something like the following might assist, especially when dealing with lots of models.
 
     models/
       users/
@@ -147,9 +130,7 @@ First, a 'pro tip' from a novice, you should install the cargo subcommand `expan
 
     cargo install cargo-expand
     
-This allows you to run, the following command and actually _see_ what
-is generated (warning, this guide assumes that you know Rust, but the
-following might make even a seasoned Rust developer's eyes water, so feel free to skip it or use as bedtime reading).
+This allows you to run, the following command and actually _see_ what is generated (warning, this guide assumes that you know Rust, but the following might make even a seasoned Rust developer's eyes water, so feel free to skip it or use as bedtime reading).
       
     cargo exand
 
@@ -258,12 +239,7 @@ At this point, you are ready to actually _do_ something with Diesel, probably in
 
 First and foremost, at this point, it is super important to underscore that you are now entering the _normal_ Rust world. What I mean by this is that the codegen and magic bits of Diesel now take a backseat.
 
-This implies that when you look at example code, there is no more
-slight of hand. You need only trust the complier and take time to
-unpack the statements and expressions like you would normally
-do. You'll find that you are calling normal methods, passing normal
-data-structures (or references to them) and that you can `println!`,
-debug, step, re-order and organise like you would with any other Rust code. It took me an unfortunately long time to comprehend this, but it is an important insight and will allow you to code without fear.
+This implies that when you look at example code, there is no more slight of hand. You need only trust the complier and take time to unpack the statements and expressions like you would normally do. You'll find that you are calling normal methods, passing normal data-structures (or references to them) and that you can `println!`, debug, step, re-order and organise like you would with any other Rust code. It took me an unfortunately long time to comprehend this, but it is an important insight and will allow you to code without fear.
 
 ### Connecting to the database
 
@@ -290,8 +266,7 @@ The guide specifies the following function in `src/lib.rs`. Let's step through i
             .expect("Error saving new post")
     }
 
-First note the reference to the connection `&PgConnection`. As is done
-for some of the other files in `src/bin/`, a new `PgConnection` could also be instantiated by calling something like:
+First note the reference to the connection `&PgConnection`. As is done for some of the other files in `src/bin/`, a new `PgConnection` could also be instantiated by calling something like:
 
     let conn = establish_connection();
 
@@ -323,7 +298,7 @@ In this case `schema` is the name of _your_ module, due to the schema being gene
 
 ### Querying data
  
- Again, we'll refer to a function in the guide, in this case the `src/bin/show_posts.rs` file:
+Again, we'll refer to a function in the guide, in this case the `src/bin/show_posts.rs` file:
  
 ```
 extern crate diesel_demo;
@@ -365,8 +340,7 @@ Extra credit if you spotted the convenience import of `table` into the dsl modul
 
 #### Building queries
 
-In SQL we construct a select statement to return values from our
-database, and in Diesel we use Rust's type system to construct type-checked, safe versions of those. This is great for anyone who has ever struggled with the fragility of SQL queries, and its implied security risks... only valid SQL should compile successfully.
+In SQL we construct a select statement to return values from our database, and in Diesel we use Rust's type system to construct type-checked, safe versions of those. This is great for anyone who has ever struggled with the fragility of SQL queries, and its implied security risks... only valid SQL should compile successfully.
 
 The next statement `posts.filter(published.eq(true))` reflects that we want to run the `filter` method on the `posts` table (conveniently also imported into our context by the `use schema::posts::dsl::*` statement). `filter` takes a constructed filter as its input. A filter is constructed by combining columns and their expression methods.
 
@@ -384,8 +358,7 @@ let results = posts_with_sql
     .expect("Error loading posts");
 ```
 
-If you look at the output to the terminal you will see a
-`SelectStatement` object is returned. You can also use `println!("SQL: {}", debug_sql!(posts_with_sql));` to look at the SQL that would be generated (add `#![feature(use_extern_macros)]` to the top of the file to use this macro).
+If you look at the output to the terminal you will see a `SelectStatement` object is returned. You can also use `println!("SQL: {}", debug_sql!(posts_with_sql));` to look at the SQL that would be generated (add `#![feature(use_extern_macros)]` to the top of the file to use this macro).
 
 The main takeaway from this section is that you first build up the relevant SQL statement by using your `table` and `columns` imported from the `dsl` module, and that this is introspect-able by `println!` and `debug_sql`.
 
@@ -401,7 +374,7 @@ let results = ...omitted...
     .expect("Error loading posts");
 ```
 
-As can be seen we are calling the `.load()` method of the `SelectStatement` struct that we inspected a bit closer above. The `.load()` method is generic, so we need to give the compiler some hints as to what type we want to return. The parameter for the load function is a reference to (or borrow of) the `connection` object returned by `establish_connection`.
+As can be seen we are calling the `.load()` method of the `SelectStatement` struct that we inspected a bit closer above. The `.load()` method is generic, so we need to give the compiler some hints as to what type we want to return. The parameter for the load function is a reference to (or borrow of) the `connection` object returned by `establish_connection`. 
 
 `load` returns a result object, which in the case of this executable we deal with by just unwrapping the result with the `expect()` method. We then pass the result, if we were successful, to the `results` binding. 
 
@@ -419,10 +392,7 @@ let results :Vec<Post> = posts
     .expect("Error loading posts");
 ```
 
-`load` and `get_results` are equivalent. That is, they both return a
-`Vec<T>` result (`QueryResult`). Note that the code was reformatted to
-illustrate the return-type hint given to the compiler in the binding,
-`let results: Vec<Post> = ...`.
+`load` and `get_results` are equivalent. That is, they both return a `Vec<T>` result (`QueryResult`). Note that the code was reformatted to illustrate the return-type hint given to the compiler in the binding, `let results: Vec<Post> = ...`.
 
 Lastly, sometimes you will use a `select` method or `join` method (not illustrated in this article, but do check out the 'unofficial guide' aka `diesel_tests` mentioned above) which will return rows that do not map directly to the fields in your models. Use a `tuple` to collect your results from your `load` method in that case. This may look like:
 
