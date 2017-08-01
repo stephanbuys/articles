@@ -73,7 +73,7 @@ You want to grab the datatypes (`Integer` and `VarChar` in this case) and immedi
   
 ### Create Models
 
-As with the schema, you don't _have_ to put your models in the `models.rs` file. It is recommend that you split your models out using the Rust modules system, and something like the following might assist, especially when dealing with lots of models.
+As with the schema, you don't _have_ to put your models in the `models.rs` file. It is recommended that you split your models out using the Rust modules system, and something like the following might assist, especially when dealing with lots of models.
 
     models/
       users/
@@ -82,8 +82,6 @@ As with the schema, you don't _have_ to put your models in the `models.rs` file.
         mod.rs
 
 > I initially struggled to split the "magic" used to drive Diesel from idiomatic Rust. It turns out Diesel is just good old familiar Rust once you know how it is structured and now how to deal with the generated code.
-
-Models are normal Rust structs that map to your tables, and they normally represent a single object in a single row, and your table represents the collection of these objects. Diesel assumes that the `User` object will be stored in the `users` table, although you can override it with some directives as discussed next.
 
 An example model expressed as a Rust struct is as follows, plucked straight from the Getting Started guide:
 
@@ -97,7 +95,11 @@ pub struct Post {
 }
 ```
 
-Note that diesel's SQL types don't support unsigned integers in Postgresql, and that it supports some other custom datatypes too, such as MACADDR (implemented as a `[u8; 6]`), so it might be worthwhile checking `diesel::pg::types` in the docs.
+Models are normal Rust structs that _seem_ to map to your tables. This is usually the case for simple models, however, it is very important to note that `Queryable` structs, as the name implies, actually map to the _results_ you want to obtain from a SQL query.
+
+A `Queryable` struct is a single object or row (partial or complete) that you want to retrieve from a SQL query. This `User` object will be queryable from the `users` table, or any query that returns the correct types, as discussed in the `Queryable` section below.
+
+Note that diesel's SQL types don't support unsigned integers in Postgresql (this is a Postgresql limitation), so it would be worthwhile looking at the appropriate `diesel::*::types` in the documentation to see what your database supports.
  
 ### Derives, aka "The Codegen Magic"
 
@@ -142,6 +144,8 @@ Let's look at the derives in more detail.
 
 These are your standard Rust derives that most developers rely on when appropriate. You probably want at least `Debug` if you like `println!` (or the shiny new `eprintln!`) for  debugging.
 
+> `#![deny(missing_debug_implementations)]` is a very useful compiler directive as it will error on any structs that do not have `Debug` implementations, especially useful if you are developing a library.
+
 #### Queryable
 
 The first thing that most developers usually want to do with their databases is query the data within it. In order to do this, you need to decorate your `struct` as follows:
@@ -155,8 +159,10 @@ struct User {
     age: i32,
 }
 ```
-    
-This will cause `diesel_codegen` to generate the query DSL needed by Diesel. The code above represents one row in a database table called `users`, with columns `firstname`, `lastname` and `age`.
+
+This will cause `diesel_codegen` to generate the query DSL needed to deserialize a query result of type `(i32, String, String, i32)` which maps to `(Integer, Text, Text, Integer)` in Postgresql, more examples of this towards the end of the article.
+
+> In SQLite a date/time type can be deserialized to `String` too.
 
 A primary key column is mandatory to work with Diesel, but is probably good practice anyway.
 
@@ -178,7 +184,7 @@ struct NewUser {
     
 Note that we have dropped the `id` field as the SQL server will handle this for us (this might change for advanced use-cases).
 
-Also note that we now explicitly name the table, `users`, as there is no direct correlation between the struct name and the table name.
+Also note that we now explicitly name the table, `users`, this is also needed for `AsChangeset`, and inferred for `Identifiable`
 
 #### Identifiable
 
@@ -232,6 +238,10 @@ struct ActiveUsers {
     last_active: NaiveDateTime,
 }
 ```
+
+#### AsChangeSet
+
+`#[derive(AsChangeset)]` is  used to updates, more details can be found in this work-in-progress guide: https://github.com/diesel-rs/diesel/blob/master/guide_drafts/all-about-updates.md
         
 ## Using Diesel 
 
@@ -270,7 +280,7 @@ First note the reference to the connection `&PgConnection`. As is done for some 
 
     let conn = establish_connection();
 
-The next line, `use schema::posts;`, stumped me for a long time, as this is using generated code. In the `diesel::insert` statement, we see the use of `posts::table`. 
+The next line, `use schema::posts;`, stumped me for a long time, as this is using generated code. In the `diesel::insert` expression, we see the use of `posts::table`. 
 
 At this point, it might be a good idea to take the output of `cargo expand` and have a look at it in an IDE of sorts. Try the following:
 
@@ -290,9 +300,9 @@ If you search for `mod schema` under the output you will also see `mod posts`, a
 
 Next we have a new object (which is `Insertable`) called `new_post`. 
 
-Lastly we have the actual Diesel statement `insert`. If you consult the documentation you will see that the Diesel module has 5 functions, `insert`, `delete`, `insert_default_values`, `select` and `update` at its core.
+Lastly we have the actual Diesel method `insert`. If you consult the documentation you will see that the Diesel module has 5 functions, `insert`, `delete`, `insert_default_values`, `select` and `update` at its core.
 
-If you look at the `insert` function you'll see it accepts `records: T` (in this case our new user, but it can also be a `Vec<T>`) and returns an `IncompleteInsertStatement` object, which has one method called `into()` which accepts your `table` struct. You could also have called `into(schema::posts::table)` and avoided the use statement.
+If you look at the `insert` function you'll see it accepts `records: T` (in this case our new user, but it can also be a `Vec<T>`) and returns an `IncompleteInsertStatement` object, which has one method called `into()` which accepts your `table` struct. You could also have called `into(::schema::posts::table)` and avoided the use statement.
 
 In this case `schema` is the name of _your_ module, due to the schema being generated in the `schema.rs` file.
 
@@ -334,15 +344,24 @@ Stepping through it from the top, first we import our own crate (the example `Ca
 
 In the `main()` function is where we encounter the use of some magic again, specifically the `use diesel_demo::schema::posts::dsl::*;` line. When I first started using Diesel I was stumped between the difference of `schema::tablename::*` imports as used above when inserting code and `schema::posts::dsl::*` dsl imports used here. 
 
-A look at the output of `cargo expand` allows for some clarification, but in short, `schema::posts::dsl::*` brings the `columns` of your table into scope. Each column type that is generated for you has a collection of `expression_methods` implemented on it. To rephrase this, the `dsl` (domain specific language) allows us to use the `columns` in our table's names (as defined by the `schema.rs` generated code) and apply logic to it in order to construct our SQL queries. (see http://docs.diesel.rs/diesel/expression_methods/global_expression_methods/trait.ExpressionMethods.html#method.desc)
+A look at the output of `cargo expand` allows for some clarification:
+
+```
+pub mod dsl {
+    pub use super::columns::*;
+    pub use super::table as posts;
+}
+```
+
+In short, `schema::posts::dsl::*` brings the `columns` of your table into scope. Each column type that is generated for you has a collection of `expression_methods` implemented on it. To rephrase this, the `dsl` (domain specific language) allows us to use the `columns` in our table's names (as defined by the `schema.rs` generated code) and apply logic to it in order to construct our SQL queries. (see http://docs.diesel.rs/diesel/expression_methods/global_expression_methods/trait.ExpressionMethods.html#method.desc)
     
 Extra credit if you spotted the convenience import of `table` into the dsl module (I think this is for convenience).
 
 #### Building queries
 
-In SQL we construct a select statement to return values from our database, and in Diesel we use Rust's type system to construct type-checked, safe versions of those. This is great for anyone who has ever struggled with the fragility of SQL queries, and its implied security risks... only valid SQL should compile successfully.
+In SQL we construct a select expression to return values from our database, and in Diesel we use Rust's type system to construct type-checked, safe versions of those. This is great for anyone who has ever struggled with the fragility of SQL queries, and its implied security risks... only valid SQL should compile successfully.
 
-The next statement `posts.filter(published.eq(true))` reflects that we want to run the `filter` method on the `posts` table (conveniently also imported into our context by the `use schema::posts::dsl::*` statement). `filter` takes a constructed filter as its input. A filter is constructed by combining columns and their expression methods.
+The next expression `posts.filter(published.eq(true))` reflects that we want to run the `filter` method on the `posts` table (conveniently also imported into our context by the `use schema::posts::dsl::*` statement). `filter` takes a constructed filter as its input. A filter is constructed by combining columns and their expression methods.
 
 To inspect the results of this you can rewrite the relevant code as:
 
@@ -358,9 +377,9 @@ let results = posts_with_sql
     .expect("Error loading posts");
 ```
 
-If you look at the output to the terminal you will see a `SelectStatement` object is returned. You can also use `println!("SQL: {}", debug_sql!(posts_with_sql));` to look at the SQL that would be generated (add `#![feature(use_extern_macros)]` to the top of the file to use this macro).
+If you look at the output to the terminal you will see a `SelectStatement` object is returned. You can also use `println!("SQL: {}", debug_sql!(posts_with_sql));` to look at the SQL that would be generated (make use you import diesel using `#[macro_use] extern crate diesel;`).
 
-The main takeaway from this section is that you first build up the relevant SQL statement by using your `table` and `columns` imported from the `dsl` module, and that this is introspect-able by `println!` and `debug_sql`.
+The main takeaway from this section is that you first build up the relevant SQL query by using your `table` and `columns` imported from the `dsl` module, and that this is introspect-able by `println!` and `debug_sql`.
 
 You should familiarize yourself as much as possible with the different `expression_methods` you can call on columns - it will get you well on your way to building the SQL queries you want to use in your applications. 
  
@@ -382,7 +401,7 @@ See `diesel::prelude::LoadDsl` or `diesel::prelude::FirstDsl` in the docs for so
 
 In all the methods just mentioned, either return a single object (`QueryResult<T>`) or a vector of objects (`QueryResult<Vec<T>>`). In other words, one row or multiple rows of the selected columns in the database table.
 
-#### Wresting with results
+#### Wrestling with results
 
 If we wanted to get all the results back, we could have used the code:
 
