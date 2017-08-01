@@ -10,8 +10,10 @@ There are many topics that this article will not cover, but the hope is that you
 
 You should first run through the [Getting Started guide](http://diesel.rs/guides/getting-started) on the official Diesel website. This article focusses on Postgresql, and by far the easiest way to get a Postgresql server running for your tests is by using Docker (www.docker.com)... the following one-liner should do the trick:
 
-    docker run --rm --detach --name postgres --env POSTGRES_USER=username --env POSTGRES_PASSWORD=password --publish 127.0.0.1:5432:5432 postgres
-    
+```
+docker run --rm --detach --name postgres --env POSTGRES_USER=username --env POSTGRES_PASSWORD=password --publish 127.0.0.1:5432:5432 postgres
+```
+
 > This is _not_ for production use, the whole container will be removed when the container is stopped (use `docker stop postgres`), but it is super handy for the getting started guide.
 
 ### A word about the format of the rest of this article
@@ -62,24 +64,28 @@ It is recommended that you use of the `diesel print-schema` subcommand and simpl
 
 What you will see is a `table!` macro similar to:
 
-    table! {
-	    users {
-            id -> Integer,
-            name -> VarChar,
-       }
-    }
-    
+```
+table! {
+  users {
+        id -> Integer,
+        name -> VarChar,
+   }
+}
+```
+
 You want to grab the datatypes (`Integer` and `VarChar` in this case) and immediately run over to `docs.rs/diesel` and plug it into the doc search bar. This will take you straight to `diesel::types::Foo` (also explore `diesel::types`) and allows you to inspect the implemented `ToSql` and `FromSql` traits for each type. To take one example, `Integer` maps to `i32` in Rust. This is super useful when implementing your models, or wrestling with compile-time errors.
   
 ### Create Models
 
 As with the schema, you don't _have_ to put your models in the `models.rs` file. It is recommended that you split your models out using the Rust modules system, and something like the following might assist, especially when dealing with lots of models.
 
-    models/
-      users/
-        mod.rs
-      posts/
-        mod.rs
+```
+models/
+  users/
+    mod.rs
+  posts/
+    mod.rs
+```
 
 > I initially struggled to split the "magic" used to drive Diesel from idiomatic Rust. It turns out Diesel is just good old familiar Rust once you know how it is structured and now how to deal with the generated code.
 
@@ -113,10 +119,11 @@ pub struct Post {
     pub id: i32,
     ...
 ```
-  
+
 A more complex example:
             
 > I loved stumbling across the following in the tests... it truly made me smile at the genius of the authors, but it also made me scratch my head, "where on earth are these things used and how do they work?"
+
 
 ```
 #[derive(PartialEq, Eq, Debug, Clone, Queryable, Identifiable, Insertable, AsChangeset, Associations)]
@@ -127,14 +134,19 @@ pub struct User {
     pub hair_color: Option<String>,
 }
 ```
-        
+
+
 First, a 'pro tip' from a novice, you should install the cargo subcommand `expand`:
 
-    cargo install cargo-expand
-    
+```
+cargo install cargo-expand
+```
+
 This allows you to run, the following command and actually _see_ what is generated (warning, this guide assumes that you know Rust, but the following might make even a seasoned Rust developer's eyes water, so feel free to skip it or use as bedtime reading).
-      
-    cargo exand
+
+```
+cargo exand
+```
 
 The full glory of the generated DSL is revealed... of particular interest is the columns for each model. Parsing the output is left as an exercise for the bored reader, or the readers who like a challenge.
 
@@ -181,7 +193,7 @@ struct NewUser {
     age: i32,
 }
 ```
-    
+
 Note that we have dropped the `id` field as the SQL server will handle this for us (this might change for advanced use-cases).
 
 Also note that we now explicitly name the table, `users`, this is also needed for `AsChangeset`, and inferred for `Identifiable`
@@ -212,7 +224,7 @@ struct User {
     age: i32,
 }
 ```
-    
+
 #### Associations
 
 The tables that you want to enrich with your `Identifiable` data needs to be annotated as follows:
@@ -226,7 +238,7 @@ struct ActiveUsers {
     last_active: NaiveDateTime
 }
 ```
-    
+
 This will allow you to join the `User` data to this table by looking up the user, defined by the field `user_id`, corresponding to the `id` field in the `User` table. In the event where your foreign key field is not specified in the pattern `type_id`, you will need to manually map it:
 
 ```
@@ -263,39 +275,45 @@ Everything you execute using Diesel will depend on the connection object being a
 
 The guide specifies the following function in `src/lib.rs`. Let's step through it:
 
-    pub fn create_post(conn: &PgConnection, title: &str, body: &str) -> Post {
-        use schema::posts;
+```
+pub fn create_post(conn: &PgConnection, title: &str, body: &str) -> Post {
+    use schema::posts;
 
-        let new_post = NewPost {
-            title: title,
-            body: body,
-        };
+    let new_post = NewPost {
+        title: title,
+        body: body,
+    };
 
-        diesel::insert(&new_post).into(posts::table)
-            .get_result(conn)
-            .expect("Error saving new post")
-    }
+    diesel::insert(&new_post).into(posts::table)
+        .get_result(conn)
+        .expect("Error saving new post")
+}
+```
 
 First note the reference to the connection `&PgConnection`. As is done for some of the other files in `src/bin/`, a new `PgConnection` could also be instantiated by calling something like:
 
-    let conn = establish_connection();
+```
+let conn = establish_connection();
+```
 
 The next line, `use schema::posts;`, stumped me for a long time, as this is using generated code. In the `diesel::insert` expression, we see the use of `posts::table`. 
 
 At this point, it might be a good idea to take the output of `cargo expand` and have a look at it in an IDE of sorts. Try the following:
 
-    # Check out a copy of Diesel     git clone https://github.com/diesel-rs/diesel.git
-    cd diesel/examples/postgres/getting_started_step_3/
-    
-    # Build the example (assuming your postgres instance is ready 
-    # and running; see the docker hint above)
-    echo DATABASE_URL=postgres://username:password@localhost/diesel_demo > .env
-    diesel setup
-    cargo build
-    
-    # Expand the code (assuming cargo-expand is installed)
-    cargo expand --lib > expanded.rs
-    
+```
+# Check out a copy of Diesel     git clone https://github.com/diesel-rs/diesel.git
+cd diesel/examples/postgres/getting_started_step_3/
+
+# Build the example (assuming your postgres instance is ready 
+# and running; see the docker hint above)
+echo DATABASE_URL=postgres://username:password@localhost/diesel_demo > .env
+diesel setup
+cargo build
+
+# Expand the code (assuming cargo-expand is installed)
+cargo expand --lib > expanded.rs
+```
+
 If you search for `mod schema` under the output you will also see `mod posts`, and there you'll find a `table` struct (empty, but with a bunch of Traits impl'ed).
 
 Next we have a new object (which is `Insertable`) called `new_post`. 
@@ -428,3 +446,6 @@ Above, we expressed the `Post` model or `struct` as a `tuple` of its constituent
 There is a lot that wasn't covered in this article, even though it is quite a large volume of information to consume in its own right. As mentioned initially, the goal was to explain enough of Diesel and its structure so that it would become possible for interested developers to "grok" or understand it, and then help themselves.
 
 I hope you made it this far and that you enjoyed the journey, please send feedback and enjoy Rust and Diesel.
+
+Special thanks to Sean Griffin, the author of Diesel, for the fact-checking he did on this article.
+
